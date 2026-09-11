@@ -40,13 +40,13 @@ class Migrator(object):
     A class that provides shortcuts for adding migration operations.
     """
 
-    def __init__(self, database, schema=None):
+    def __init__(self, database, state: State | None = None, schema=None) -> None:
         """Initialize the migrator."""
         if isinstance(database, pw.Proxy):
             database = database.obj
 
         self.database = database
-        self.state = State()
+        self.state = state or State()
         self.schema_migrator = SchemaMigrator.from_database(self.database)
         self.schema = schema
         self._operations: list[Operation | Callable] = []
