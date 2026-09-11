@@ -52,6 +52,7 @@ class MigrateOperation:
 
     def get_operation_call(self) -> str:
         name = self.__class__.__name__
+        return f"operations.{name}"
         shortcut = re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
         return f"migrator.{shortcut}"
 
