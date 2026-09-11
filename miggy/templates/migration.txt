@@ -32,17 +32,16 @@ Some examples (model - class or model name)::
 """
 
 {imports}
+from miggy import operations
 
 
-# Run the migration inside a single transaction
-__ATOMIC = True
+class Migration:
+    atomic = True
 
-
-def migrate(migrator, database, fake=False):
-    """Write your migrations here."""
+    migrate = [
 {migrate}
+    ]
 
-
-def rollback(migrator, database, fake=False):
-    """Write your rollback migrations here."""
+    rollback = [
 {rollback}
+    ]

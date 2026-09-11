@@ -184,8 +184,7 @@ class Router(object):
             serialized_changes.append(writer.serialize())
             imports.update(writer.imports)
 
-        line = NEWLINE + NEWLINE.join("\n\n".join(serialized_changes).split("\n"))
-        return CLEAN_RE.sub("\n", line), imports
+        return  "\n".join(serialized_changes), imports
 
     def _compile_template(
         self, name: str, migrate_changes: list[MigrateOperation], rollback_changes: list[MigrateOperation]

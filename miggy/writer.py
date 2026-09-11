@@ -3,7 +3,7 @@ from miggy.serializer import SerializeValueMixin
 
 
 class OperationWriter(SerializeValueMixin):
-    def __init__(self, operation: MigrateOperation, indentation: int = 0) -> None:
+    def __init__(self, operation: MigrateOperation, indentation: int = 2) -> None:
         self.operation = operation
         self.buff: list[str] = []
         self.indentation = indentation
@@ -37,7 +37,7 @@ class OperationWriter(SerializeValueMixin):
             self._write(arg_value, arg_name)
 
         self.unindent()
-        self.feed(")")
+        self.feed("),")
         return self.render()
 
     def indent(self) -> None:
