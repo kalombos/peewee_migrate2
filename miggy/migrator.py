@@ -35,27 +35,37 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-class Migration:
-    def __init__(self, state: State, schema_migrator: "SchemaMigrator", schema: str | None = None) -> None:
-        self.state = state
-        self.schema_migrator = schema_migrator
-        self.schema = schema
-        self.operations: list[Operation | Callable] = []
+class Migrator(object):
+    """
+    A class that provides shortcuts for adding migration operations.
+    """
 
-    def append(self, op: MigrateOperation) -> None:
+    def __init__(self, database, state: State | None = None, schema=None) -> None:
+        """Initialize the migrator."""
+        if isinstance(database, pw.Proxy):
+            database = database.obj
+
+        self.database = database
+        self.state = state or State()
+        self.schema_migrator = SchemaMigrator.from_database(self.database)
+        self.schema = schema
+        self._operations: list[Operation | Callable] = []
+
+    def add_operation(self, op: MigrateOperation) -> None:
+        """
+        Adds a migrate operation
+        """
         self.state.create_snapshot()
         op.state_forwards(self.state)
         from_state = self.state.pop_snapshot()
-        self.operations.extend(op.database_forwards(self.schema_migrator, from_state, self.state))
+        self._operations.extend(op.database_forwards(self.schema_migrator, from_state, self.state))
 
-    def apply(self, change_schema: bool) -> None:
-        if not change_schema:
-            return
+    def _apply_operations(self) -> None:
 
         if self.schema:
-            _ops = [self.schema_migrator.select_schema(self.schema), *self.operations]
+            _ops = [self.schema_migrator.select_schema(self.schema), *self._operations]
         else:
-            _ops = [*self.operations]
+            _ops = [*self._operations]
 
         for op in _ops:
             if isinstance(op, Operation):
@@ -64,36 +74,10 @@ class Migration:
             else:
                 op()
 
-    def clean(self) -> None:
-        self.operations = []
-
-
-class Migrator(object):
-    """
-    A class that provides shortcuts for adding migration operations.
-    """
-
-    def __init__(self, database, schema=None):
-        """Initialize the migrator."""
-        if isinstance(database, pw.Proxy):
-            database = database.obj
-
-        self.database = database
-        self.state = State()
-        self.schema_migrator = SchemaMigrator.from_database(self.database)
-        self.schema = schema
-
-        self.migration = Migration(self.state, self.schema_migrator, schema=schema)
-
-    def add_operation(self, op: MigrateOperation) -> None:
-        """
-        Adds a migrate operation
-        """
-        self.migration.append(op)
-
     def run(self, change_schema: bool = True):
-        self.migration.apply(change_schema)
-        self.clean()
+        if change_schema:
+            self._apply_operations()
+        self._operations = []
 
     def python(self, func: RunPythonF):
         """A shortcut for adding a :class:`RunPython` operation."""
@@ -102,10 +86,6 @@ class Migrator(object):
     def sql(self, sql: str, params: tuple[Any, ...] | None = None) -> None:
         """A shortcut for adding a :class:`RunSql` operation."""
         self.add_operation(RunSql(sql, params))
-
-    def clean(self):
-        """Clean the operations."""
-        self.migration.clean()
 
     def create_model(
         self,

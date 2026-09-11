@@ -73,6 +73,12 @@ class Router(object):
         self.ignore = ignore or []
         self.logger = logger
         self.migration_template = MIGRATION_TEMPLATE.read_text()
+        self.state = State()
+
+    def build_state_from_migrations(self, use_unapplied: bool = False) -> None:
+        migrations = self.todo if use_unapplied else self.done
+        for name in migrations:
+            self.run_one(name)
 
     @cached_property
     def model(self) -> typing.Type[MigrateHistory]:
@@ -102,19 +108,6 @@ class Router(object):
         done = set(self.done)
         return [name for name in self.todo if name not in done]
 
-    @cached_property
-    def migrator(self):
-        """Create migrator and setup it with fake migrations."""
-        migrator = Migrator(self.database, self.schema)
-        for name in self.done:
-            self.run_one(name, migrator)
-        return migrator
-
-    @property
-    def migration_state(self) -> State:
-        """Create migrator and setup it with fake migrations."""
-        return self.migrator.state
-
     def load_project_state(self, auto) -> State:
         modules = [auto]
         if isinstance(auto, bool):
@@ -136,45 +129,18 @@ class Router(object):
             except ImportError:
                 return self.logger.exception("Can't import models module")
 
-            for migration in self.diff:
-                self.run_one(migration, self.migrator)
+            self.build_state_from_migrations(use_unapplied=True)
 
-            migrate_changes = detect_changes(self.migration_state, project_state)
+            migrate_changes = detect_changes(self.state, project_state)
             if not migrate_changes:
                 return self.logger.warning("No changes found.")
 
-            rollback_changes = detect_changes(project_state, self.migration_state)
+            rollback_changes = detect_changes(project_state, self.state)
 
         self.logger.info('Creating migration "%s"', name)
         name = self.compile(name, migrate_changes, rollback_changes)
         self.logger.info('Migration has been created as "%s"', name)
         return name
-
-    def merge(self, name="initial"):
-        """Merge migrations into one."""
-        migrator = Migrator(self.database)
-        migrate_changes = detect_changes(migrator.state, self.migration_state)
-        if not migrate_changes:
-            return self.logger.error("Can't merge migrations")
-
-        self.clear()
-
-        self.logger.info('Merge migrations into "%s"', name)
-        rollback_changes = detect_changes(self.migration_state, State())
-        name = self.compile(name, migrate_changes, rollback_changes, 0)
-
-        migrator = Migrator(self.database)
-        self.run_one(name, migrator, change_schema=False, change_history=True)
-        self.logger.info('Migrations has been merged into "%s"', name)
-
-    def clear(self):
-        """Clear migrations."""
-        self.model.delete().execute()
-
-        # Remove migrations from fs
-        for name in self.todo:
-            filename = os.path.join(self.migrate_dir, name + ".py")
-            os.remove(filename)
 
     def _serialize_changes(self, changes: list[MigrateOperation]):
         imports = set()
@@ -241,13 +207,13 @@ class Router(object):
     def run_one(
         self,
         name: str,
-        migrator: Migrator,
         change_schema: bool = False,
         change_history: bool = False,
         downgrade: bool = False,
     ) -> None:
         """Run/emulate a migration with given name."""
         fake = not change_schema
+        migrator = Migrator(self.database, self.state, self.schema)
         try:
             migration = self.read(name)
 
@@ -288,9 +254,9 @@ class Router(object):
             self.logger.info("There is nothing to migrate")
             return done
 
-        migrator = self.migrator
+        self.build_state_from_migrations()
         for mname in diff:
-            self.run_one(mname, migrator, change_schema=not fake, change_history=True)
+            self.run_one(mname, change_schema=not fake, change_history=True)
             done.append(mname)
             if name and name == mname:
                 break
@@ -305,9 +271,37 @@ class Router(object):
         if name != done[-1]:
             raise RuntimeError("Only last migration can be canceled.")
 
-        migrator = self.migrator
-        self.run_one(name, migrator, change_schema=True, downgrade=True, change_history=True)
+        self.build_state_from_migrations()
+        self.run_one(name, change_schema=True, downgrade=True, change_history=True)
         self.logger.warning("Downgraded migration: %s", name)
+
+    # Candidates for deprecation
+
+    def merge(self, name="initial"):
+        """Merge migrations into one."""
+        self.build_state_from_migrations()
+        migrate_changes = detect_changes(State(), self.state)
+        if not migrate_changes:
+            return self.logger.error("Can't merge migrations")
+
+        self.clear()
+
+        self.logger.info('Merge migrations into "%s"', name)
+        rollback_changes = detect_changes(self.state, State())
+        name = self.compile(name, migrate_changes, rollback_changes, 0)
+
+        self.state = State()
+        self.run_one(name, change_schema=False, change_history=True)
+        self.logger.info('Migrations has been merged into "%s"', name)
+
+    def clear(self):
+        """Clear migrations."""
+        self.model.delete().execute()
+
+        # Remove migrations from fs
+        for name in self.todo:
+            filename = os.path.join(self.migrate_dir, name + ".py")
+            os.remove(filename)
 
 
 def load_models(module):

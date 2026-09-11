@@ -15,11 +15,12 @@ from tests.helpers import diff_one, operation_to_one_line
 def test_on_real_migrations(migrations_dir: Path):
     router = Router("sqlite:///:memory:", migrate_dir=migrations_dir)
     router.run()
-    migrator = router.migrator
-    Person_ = migrator.state["person"]
-    Tag_ = migrator.state["tag"]
+    router.build_state_from_migrations()
+    state = router.state
+    Person_ = state["person"]
+    Tag_ = state["tag"]
 
-    changes = MigrationAutodetector(State(), migrator.state).diff_many()
+    changes = MigrationAutodetector(State(), state).diff_many()
     assert len(changes) == 2
     assert all(isinstance(c, CreateModel) for c in changes)
 

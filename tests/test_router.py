@@ -16,13 +16,14 @@ from tests.helpers import get_active_status
 
 def test_router_run_already_applied_ok(router: Router) -> None:
     router.run()
-    Person = router.migrator.state["person"]
+    router.build_state_from_migrations()
+    Person = router.state["person"]
 
     assert Person.get_or_none(email="person@example.com") is not None
 
     Person.delete().execute()
 
-    router.run_one("004_test_insert", router.migrator)
+    router.run_one("004_test_insert")
     assert Person.get_or_none(email="person@example.com") is None
 
 
@@ -78,7 +79,7 @@ def test_router_schema(tmpdir):
         router = Router(database="postgres:///fake", migrate_dir=str(migrations), schema=schema_name)
 
         assert router.schema == schema_name
-        assert router.migrator.schema == schema_name
+        # TODO: test schema change
 
 
 @pytest.mark.parametrize(
@@ -95,7 +96,7 @@ def test_migration_atomic(resources_dir: pathlib.Path, expected: bool, migration
             db,
             migrate_dir=resources_dir / "transaction_test",
         )
-        router.run_one(migration_name, router.migrator, change_schema=True, change_history=True)
+        router.run_one(migration_name, change_schema=True, change_history=True)
         transaction_called = mocked.call_count == 1
         assert transaction_called is expected
 

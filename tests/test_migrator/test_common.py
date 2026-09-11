@@ -147,6 +147,7 @@ def test_migrator_add_index(
 
 def test_migrator_schema(patched_pg_db: PatchedPgDatabase):
     schema_name = "test_schema"
+    patched_pg_db.execute_sql("DROP SCHEMA IF EXISTS test_schema CASCADE;")
     patched_pg_db.execute_sql("CREATE SCHEMA  test_schema;")
 
     migrator = Migrator(patched_pg_db, schema=schema_name)
