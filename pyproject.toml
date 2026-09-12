@@ -25,7 +25,7 @@ classifiers=[
 license = "BSD-4-Clause"
 
 dependencies = [
-    "peewee>=3.17.9,<4.4",
+    "peewee>=3.17.9,<4.6",
     "click>=8.3.1",
     "StrEnum; python_version < '3.11'"
 ]
